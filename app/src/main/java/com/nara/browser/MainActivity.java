@@ -505,16 +505,38 @@ public class MainActivity extends AppCompatActivity {
         cm.setAcceptCookie(true);
         int count = 0;
 
-        // Show first 3 lines for debugging
-        String debug = "Bestand: " + lines.length + " regels\n";
-        for (int i = 0; i < Math.min(3, lines.length); i++) {
-            String l = lines[i].trim();
-            if (l.length() > 60) l = l.substring(0, 60) + "...";
-            debug += (i+1) + ": [" + l + "]\n";
+        // Detect format for debugging
+        boolean isNaraDesktop = false;
+        String sampleLine = "";
+        for (String l : lines) {
+            if (!l.trim().isEmpty()) { sampleLine = l.trim(); break; }
         }
-        showToast(debug.trim());
+        for (String l : lines) {
+            if (l.contains("\u0001")) { isNaraDesktop = true; break; }
+        }
+        String fmt = isNaraDesktop ? "Nara Desktop" :
+            sampleLine.startsWith("http") ? "Nara Android" : "Netscape";
+        showToast(fmt + " — " + lines.length + " regels");
 
-        if (lines.length > 0 && (lines[0].startsWith("http://") || lines[0].startsWith("https://"))) {
+        if (isNaraDesktop) {
+            // Format: name\x01value\x01domain\x01path\x01expiry\x01flag...
+            for (String line : lines) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty()) continue;
+                String[] parts = trimmed.split("\u0001");
+                if (parts.length >= 4) {
+                    try {
+                        String name = parts[0];
+                        String value = parts[1];
+                        String domain = parts[2].startsWith(".") ? parts[2].substring(1) : parts[2];
+                        String path = parts[3];
+                        String url = "https://" + domain + path;
+                        cm.setCookie(url, name + "=" + value);
+                        count++;
+                    } catch (Exception e) { /* skip */ }
+                }
+            }
+        } else if (lines.length > 0 && (lines[0].startsWith("http://") || lines[0].startsWith("https://"))) {
             // Simple Nara format: url on first line, cookies on second
             String url = lines[0].trim();
             if (lines.length < 2 || lines[1].trim().isEmpty()) {
@@ -546,9 +568,7 @@ public class MainActivity extends AppCompatActivity {
                         String url = (secure ? "https://" : "http://") + domain + path;
                         cm.setCookie(url, name + "=" + value);
                         count++;
-                    } catch (Exception e) {
-                        // skip bad lines
-                    }
+                    } catch (Exception e) { /* skip */ }
                 }
             }
         }
