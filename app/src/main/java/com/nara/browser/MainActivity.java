@@ -352,6 +352,8 @@ public class MainActivity extends AppCompatActivity {
         String[] items = {
                 isDark ? t(S_LIGHT_MODE) : t(S_DARK_MODE),
                 t(S_LANGUAGE) + " → " + t(S_ENGLISH) + " / " + t(S_NEDERLANDS) + " / " + t(S_POLSKI),
+                t(S_IMPORT) + " cookies",
+                t(S_EXPORT) + " cookies",
                 t(S_CREDITS)
         };
         new AlertDialog.Builder(this)
@@ -364,6 +366,10 @@ public class MainActivity extends AppCompatActivity {
                     } else if (which == 1) {
                         showLanguageMenu();
                     } else if (which == 2) {
+                        importCookies();
+                    } else if (which == 3) {
+                        exportCookies();
+                    } else if (which == 4) {
                         showToast(t(S_CREDITS_TEXT));
                     }
                 })
@@ -401,6 +407,78 @@ public class MainActivity extends AppCompatActivity {
                 androidx.webkit.WebSettingsCompat.setForceDark(tab.webView.getSettings(),
                     isDark ? androidx.webkit.WebSettingsCompat.FORCE_DARK_ON : androidx.webkit.WebSettingsCompat.FORCE_DARK_OFF);
             }
+        }
+    }
+
+    private void exportCookies() {
+        if (activeTab < 0 || activeTab >= tabs.size()) {
+            showToast(t(S_ERROR));
+            return;
+        }
+        String url = tabs.get(activeTab).url;
+        if (url == null || url.isEmpty()) {
+            showToast(t(S_ERROR));
+            return;
+        }
+
+        CookieManager cm = CookieManager.getInstance();
+        String cookies = cm.getCookie(url);
+        if (cookies == null || cookies.isEmpty()) {
+            showToast("No cookies for this site.");
+            return;
+        }
+
+        try {
+            File file = new File(getFilesDir(), "cookies.txt");
+            FileOutputStream fos = new FileOutputStream(file);
+            OutputStreamWriter writer = new OutputStreamWriter(fos);
+            writer.write(url + "\n");
+            writer.write(cookies + "\n");
+            writer.close();
+            fos.close();
+            showToast(t(S_COOKIE_EXPORT_OK) + " (" + file.getAbsolutePath() + ")");
+        } catch (Exception e) {
+            showToast(t(S_ERROR) + ": " + e.getMessage());
+        }
+    }
+
+    private void importCookies() {
+        try {
+            File file = new File(getFilesDir(), "cookies.txt");
+            if (!file.exists()) {
+                showToast(t(S_COOKIE_NO_FILE));
+                return;
+            }
+
+            FileInputStream fis = new FileInputStream(file);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(fis));
+            String url = reader.readLine();
+            if (url == null || url.isEmpty()) {
+                reader.close();
+                showToast(t(S_ERROR));
+                return;
+            }
+            String cookieLine = reader.readLine();
+            reader.close();
+            fis.close();
+
+            if (cookieLine == null || cookieLine.isEmpty()) {
+                showToast(t(S_ERROR));
+                return;
+            }
+
+            CookieManager cm = CookieManager.getInstance();
+            String[] pairs = cookieLine.split(";");
+            for (String pair : pairs) {
+                String trimmed = pair.trim();
+                if (!trimmed.isEmpty()) {
+                    cm.setCookie(url, trimmed);
+                }
+            }
+            cm.flush();
+            showToast(t(S_COOKIE_IMPORT_OK));
+        } catch (Exception e) {
+            showToast(t(S_ERROR) + ": " + e.getMessage());
         }
     }
 
