@@ -505,9 +505,13 @@ public class MainActivity extends AppCompatActivity {
         cm.setAcceptCookie(true);
         int count = 0;
 
-        if (lines.length > 0 && (lines[0].startsWith("http://") || lines[0].startsWith("https://"))) {
+        // Show first line for debugging
+        String first = lines.length > 0 ? lines[0].trim() : "(leeg)";
+        showToast("Eerste regel: " + (first.length() > 80 ? first.substring(0, 80) + "..." : first));
+
+        if (lines.length > 0 && (first.startsWith("http://") || first.startsWith("https://"))) {
             // Simple Nara format: url on first line, cookies on second
-            String url = lines[0].trim();
+            String url = first;
             if (lines.length < 2 || lines[1].trim().isEmpty()) {
                 showToast(t(S_ERROR));
                 return;
