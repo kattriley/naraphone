@@ -473,66 +473,101 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void importCookies() {
+    private String readCookiesFromDownloads(String filename) {
         try {
-            String content;
-            File file = null;
-
             if (Build.VERSION.SDK_INT >= 29) {
                 Uri uri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL);
-                String[] projection = {MediaStore.Downloads._ID, MediaStore.Downloads.DISPLAY_NAME};
+                String[] projection = {MediaStore.Downloads._ID};
                 String selection = MediaStore.Downloads.DISPLAY_NAME + " = ?";
-                String[] args = {"Nara_cookies.txt"};
-                var cursor = getContentResolver().query(uri, projection, selection, args, null);
+                var cursor = getContentResolver().query(uri, projection, selection, new String[]{filename}, null);
                 if (cursor != null && cursor.moveToFirst()) {
                     long id = cursor.getLong(0);
                     cursor.close();
                     Uri fileUri = Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, String.valueOf(id));
-                    try (InputStream is = getContentResolver().openInputStream(fileUri)) {
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
-                        StringBuilder sb = new StringBuilder();
-                        String line;
-                        while ((line = reader.readLine()) != null) sb.append(line).append("\n");
-                        reader.close();
-                        content = sb.toString();
-                    }
-                } else {
-                    if (cursor != null) cursor.close();
-                    showToast(t(S_COOKIE_NO_FILE));
-                    return;
+                    InputStream is = getContentResolver().openInputStream(fileUri);
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) sb.append(line).append("\n");
+                    reader.close();
+                    return sb.toString();
                 }
+                if (cursor != null) cursor.close();
+                return null;
             } else {
-                file = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Nara_cookies.txt");
-                if (!file.exists()) {
-                    showToast(t(S_COOKIE_NO_FILE));
-                    return;
-                }
+                File file = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), filename);
+                if (!file.exists()) return null;
                 FileInputStream fis = new FileInputStream(file);
                 byte[] bytes = new byte[(int) file.length()];
                 fis.read(bytes);
                 fis.close();
-                content = new String(bytes, "UTF-8");
+                return new String(bytes, "UTF-8");
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void importCookies() {
+        try {
+            String content = readCookiesFromDownloads("Nara_cookies.txt");
+            if (content == null) content = readCookiesFromDownloads("cookies.txt");
+            if (content == null) {
+                showToast("Nara_cookies.txt / cookies.txt niet gevonden in Downloads");
+                return;
             }
 
             String[] lines = content.split("\n");
-            if (lines.length < 2 || lines[0].isEmpty()) {
+            if (lines.length < 1) {
                 showToast(t(S_ERROR));
                 return;
             }
 
-            String url = lines[0].trim();
-            String cookieLine = lines[1].trim();
-
+            // Support two formats:
+            // 1. Simple: first line = url, second line = cookie string
+            // 2. Netscape: lines starting with domain (cookies from PC browsers)
             CookieManager cm = CookieManager.getInstance();
-            String[] pairs = cookieLine.split(";");
-            for (String pair : pairs) {
-                String trimmed = pair.trim();
-                if (!trimmed.isEmpty()) {
-                    cm.setCookie(url, trimmed);
+            int count = 0;
+
+            if (lines[0].startsWith("http://") || lines[0].startsWith("https://")) {
+                // Simple format: url on first line, cookies on second
+                String url = lines[0].trim();
+                if (lines.length < 2 || lines[1].trim().isEmpty()) {
+                    showToast(t(S_ERROR));
+                    return;
+                }
+                String[] pairs = lines[1].trim().split(";");
+                for (String pair : pairs) {
+                    String trimmed = pair.trim();
+                    if (!trimmed.isEmpty()) {
+                        cm.setCookie(url, trimmed);
+                        count++;
+                    }
+                }
+            } else {
+                // Netscape HTTP Cookie File format (from PC browsers)
+                for (String line : lines) {
+                    String trimmed = line.trim();
+                    if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
+                    String[] parts = trimmed.split("\t");
+                    if (parts.length >= 7) {
+                        String domain = parts[0];
+                        boolean includeSubdomains = parts[1].equals("TRUE");
+                        String path = parts[2];
+                        boolean secure = parts[3].equals("TRUE");
+                        long expiry = Long.parseLong(parts[4]);
+                        String name = parts[5];
+                        String value = parts[6];
+
+                        String url = (secure ? "https://" : "http://") + domain + path;
+                        cm.setCookie(url, name + "=" + value);
+                        count++;
+                    }
                 }
             }
+
             cm.flush();
-            showToast(t(S_COOKIE_IMPORT_OK));
+            showToast(count + " cookies geïmporteerd!");
         } catch (Exception e) {
             showToast(t(S_ERROR) + ": " + e.getMessage());
         }
