@@ -189,8 +189,11 @@ public class MainActivity extends AppCompatActivity {
 
         boolean wasActive = (idx == activeTab);
 
-        webViewContainer.removeView(tabs.get(idx).webView);
-        tabs.get(idx).webView.destroy();
+        WebView wv = tabs.get(idx).webView;
+        if (wv.getParent() != null) {
+            webViewContainer.removeView(wv);
+        }
+        wv.destroy();
         tabs.remove(idx);
 
         if (activeTab >= tabs.size()) {
