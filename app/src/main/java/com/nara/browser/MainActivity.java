@@ -1,9 +1,14 @@
 package com.nara.browser;
 
 import android.annotation.SuppressLint;
+import android.content.ContentValues;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -29,7 +34,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -429,14 +436,38 @@ public class MainActivity extends AppCompatActivity {
         }
 
         try {
-            File file = new File(getFilesDir(), "cookies.txt");
-            FileOutputStream fos = new FileOutputStream(file);
-            OutputStreamWriter writer = new OutputStreamWriter(fos);
-            writer.write(url + "\n");
-            writer.write(cookies + "\n");
-            writer.close();
-            fos.close();
-            showToast(t(S_COOKIE_EXPORT_OK) + " (" + file.getAbsolutePath() + ")");
+            String content = url + "\n" + cookies + "\n";
+
+            if (Build.VERSION.SDK_INT >= 29) {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.Downloads.DISPLAY_NAME, "Nara_cookies.txt");
+                values.put(MediaStore.Downloads.MIME_TYPE, "text/plain");
+                if (Build.VERSION.SDK_INT >= 30) {
+                    values.put(MediaStore.Downloads.IS_PENDING, 1);
+                }
+                Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                if (uri != null) {
+                    try (OutputStream writer = getContentResolver().openOutputStream(uri)) {
+                        writer.write(content.getBytes("UTF-8"));
+                    }
+                    if (Build.VERSION.SDK_INT >= 30) {
+                        values.clear();
+                        values.put(MediaStore.Downloads.IS_PENDING, 0);
+                        getContentResolver().update(uri, values, null, null);
+                    }
+                    showToast(t(S_COOKIE_EXPORT_OK) + " → Downloads/Nara_cookies.txt");
+                } else {
+                    showToast(t(S_ERROR));
+                }
+            } else {
+                File docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                if (!docsDir.exists()) docsDir.mkdirs();
+                File file = new File(docsDir, "Nara_cookies.txt");
+                FileOutputStream fos = new FileOutputStream(file);
+                fos.write(content.getBytes("UTF-8"));
+                fos.close();
+                showToast(t(S_COOKIE_EXPORT_OK) + " → " + file.getAbsolutePath());
+            }
         } catch (Exception e) {
             showToast(t(S_ERROR) + ": " + e.getMessage());
         }
@@ -444,28 +475,53 @@ public class MainActivity extends AppCompatActivity {
 
     private void importCookies() {
         try {
-            File file = new File(getFilesDir(), "cookies.txt");
-            if (!file.exists()) {
-                showToast(t(S_COOKIE_NO_FILE));
-                return;
+            String content;
+            File file = null;
+
+            if (Build.VERSION.SDK_INT >= 29) {
+                Uri uri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL);
+                String[] projection = {MediaStore.Downloads._ID, MediaStore.Downloads.DISPLAY_NAME};
+                String selection = MediaStore.Downloads.DISPLAY_NAME + " = ?";
+                String[] args = {"Nara_cookies.txt"};
+                var cursor = getContentResolver().query(uri, projection, selection, args, null);
+                if (cursor != null && cursor.moveToFirst()) {
+                    long id = cursor.getLong(0);
+                    cursor.close();
+                    Uri fileUri = Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, String.valueOf(id));
+                    try (InputStream is = getContentResolver().openInputStream(fileUri)) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) sb.append(line).append("\n");
+                        reader.close();
+                        content = sb.toString();
+                    }
+                } else {
+                    if (cursor != null) cursor.close();
+                    showToast(t(S_COOKIE_NO_FILE));
+                    return;
+                }
+            } else {
+                file = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Nara_cookies.txt");
+                if (!file.exists()) {
+                    showToast(t(S_COOKIE_NO_FILE));
+                    return;
+                }
+                FileInputStream fis = new FileInputStream(file);
+                byte[] bytes = new byte[(int) file.length()];
+                fis.read(bytes);
+                fis.close();
+                content = new String(bytes, "UTF-8");
             }
 
-            FileInputStream fis = new FileInputStream(file);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(fis));
-            String url = reader.readLine();
-            if (url == null || url.isEmpty()) {
-                reader.close();
+            String[] lines = content.split("\n");
+            if (lines.length < 2 || lines[0].isEmpty()) {
                 showToast(t(S_ERROR));
                 return;
             }
-            String cookieLine = reader.readLine();
-            reader.close();
-            fis.close();
 
-            if (cookieLine == null || cookieLine.isEmpty()) {
-                showToast(t(S_ERROR));
-                return;
-            }
+            String url = lines[0].trim();
+            String cookieLine = lines[1].trim();
 
             CookieManager cm = CookieManager.getInstance();
             String[] pairs = cookieLine.split(";");
