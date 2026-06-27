@@ -187,6 +187,8 @@ public class MainActivity extends AppCompatActivity {
         if (tabs.size() <= 1) return;
         if (idx < 0 || idx >= tabs.size()) return;
 
+        boolean wasActive = (idx == activeTab);
+
         webViewContainer.removeView(tabs.get(idx).webView);
         tabs.get(idx).webView.destroy();
         tabs.remove(idx);
@@ -196,10 +198,15 @@ public class MainActivity extends AppCompatActivity {
         } else if (idx < activeTab) {
             activeTab--;
         }
+
+        if (wasActive) {
+            if (activeTab >= 0 && activeTab < tabs.size()) {
+                webViewContainer.addView(tabs.get(activeTab).webView, new ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT));
+            }
+        }
         if (activeTab >= 0 && activeTab < tabs.size()) {
-            webViewContainer.addView(tabs.get(activeTab).webView, new ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
             urlBar.setText(tabs.get(activeTab).url);
         }
         rebuildTabBar();
