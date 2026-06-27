@@ -23,7 +23,6 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.webkit.WebSettings;
 import androidx.webkit.WebViewFeature;
 
 import java.io.BufferedReader;
@@ -42,10 +41,9 @@ public class MainActivity extends AppCompatActivity {
     private Lang currentLang = Lang.English;
 
     private LinearLayout tabBar;
-    private LinearLayout toolbar;
     private EditText urlBar;
     private ViewGroup webViewContainer;
-    private Button goButton, backButton, forwardButton, reloadButton, settingsButton;
+    private Button goButton, backButton, forwardButton, reloadButton, settingsButton, newTabButton;
 
     private static class TabInfo {
         WebView webView;
@@ -69,7 +67,6 @@ public class MainActivity extends AppCompatActivity {
         isDark = prefs.getBoolean("dark", false);
 
         tabBar = findViewById(R.id.tabBar);
-        toolbar = findViewById(R.id.toolbar);
         urlBar = findViewById(R.id.urlBar);
         webViewContainer = findViewById(R.id.webViewContainer);
         goButton = findViewById(R.id.goButton);
@@ -77,6 +74,7 @@ public class MainActivity extends AppCompatActivity {
         forwardButton = findViewById(R.id.forwardButton);
         reloadButton = findViewById(R.id.reloadButton);
         settingsButton = findViewById(R.id.settingsButton);
+        newTabButton = findViewById(R.id.newTabButton);
 
         urlBar.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
@@ -87,15 +85,29 @@ public class MainActivity extends AppCompatActivity {
         });
 
         goButton.setOnClickListener(v -> navigateTo(urlBar.getText().toString()));
-        backButton.setOnClickListener(v -> { if (activeTab >= 0 && tabs.get(activeTab).webView.canGoBack()) tabs.get(activeTab).webView.goBack(); });
-        forwardButton.setOnClickListener(v -> { if (activeTab >= 0 && tabs.get(activeTab).webView.canGoForward()) tabs.get(activeTab).webView.goForward(); });
-        reloadButton.setOnClickListener(v -> { if (activeTab >= 0) tabs.get(activeTab).webView.reload(); });
+        backButton.setOnClickListener(v -> navGoBack());
+        forwardButton.setOnClickListener(v -> navGoForward());
+        reloadButton.setOnClickListener(v -> navReload());
+        newTabButton.setOnClickListener(v -> newTab("https://www.google.com"));
         settingsButton.setOnClickListener(v -> showSettingsMenu());
-
-        findViewById(R.id.newTabButton).setOnClickListener(v -> newTab("https://www.google.com"));
 
         newTab("https://www.google.com");
         applyTheme();
+    }
+
+    private void navGoBack() {
+        if (activeTab >= 0 && activeTab < tabs.size() && tabs.get(activeTab).webView.canGoBack())
+            tabs.get(activeTab).webView.goBack();
+    }
+
+    private void navGoForward() {
+        if (activeTab >= 0 && activeTab < tabs.size() && tabs.get(activeTab).webView.canGoForward())
+            tabs.get(activeTab).webView.goForward();
+    }
+
+    private void navReload() {
+        if (activeTab >= 0 && activeTab < tabs.size())
+            tabs.get(activeTab).webView.reload();
     }
 
     private void navigateTo(String input) {
@@ -179,8 +191,11 @@ public class MainActivity extends AppCompatActivity {
         tabs.get(idx).webView.destroy();
         tabs.remove(idx);
 
-        if (activeTab >= tabs.size()) activeTab = tabs.size() - 1;
-        if (idx < activeTab) activeTab--;
+        if (activeTab >= tabs.size()) {
+            activeTab = tabs.size() - 1;
+        } else if (idx < activeTab) {
+            activeTab--;
+        }
         if (activeTab >= 0 && activeTab < tabs.size()) {
             webViewContainer.addView(tabs.get(activeTab).webView, new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -206,36 +221,60 @@ public class MainActivity extends AppCompatActivity {
     private void rebuildTabBar() {
         tabBar.removeAllViews();
 
-        Button newBtn = new Button(this);
-        newBtn.setText("+");
-        newBtn.setTextSize(14);
-        newBtn.setPadding(8, 0, 8, 0);
-        newBtn.setOnClickListener(v -> newTab("https://www.google.com"));
-        tabBar.addView(newBtn);
-
         for (int i = 0; i < tabs.size(); i++) {
             String label = tabs.get(i).title;
-            if (label == null || label.isEmpty()) label = t("Tab ") + (i + 1);
-            if (label.length() > 12) label = label.substring(0, 10) + "..";
+            if (label == null || label.isEmpty()) label = t(S_TAB_PREFIX) + (i + 1);
+            if (label.length() > 14) label = label.substring(0, 12) + "..";
 
             final int fi = i;
 
+            LinearLayout tabLayout = new LinearLayout(this);
+            tabLayout.setOrientation(LinearLayout.HORIZONTAL);
+            tabLayout.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            tabLayout.setPadding(2, 2, 2, 2);
+
             Button tabBtn = new Button(this);
             tabBtn.setText(label);
-            tabBtn.setTextSize(12);
-            tabBtn.setPadding(10, 0, 10, 0);
+            tabBtn.setTextSize(11);
+            tabBtn.setPadding(10, 0, 6, 0);
             tabBtn.setSingleLine(true);
-            if (i == activeTab) tabBtn.setActivated(true);
+            tabBtn.setMinWidth(60);
+            tabBtn.setMinHeight(36);
+            if (i == activeTab) {
+                tabBtn.setActivated(true);
+                tabBtn.setTextColor(0xFF1976D2);
+            }
             tabBtn.setOnClickListener(v -> switchTab(fi));
-            tabBar.addView(tabBtn);
+            tabLayout.addView(tabBtn, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT));
 
             Button closeBtn = new Button(this);
             closeBtn.setText("×");
-            closeBtn.setTextSize(12);
-            closeBtn.setPadding(4, 0, 4, 0);
+            closeBtn.setTextSize(14);
+            closeBtn.setPadding(8, 0, 8, 0);
+            closeBtn.setMinWidth(36);
+            closeBtn.setMinHeight(36);
             closeBtn.setOnClickListener(v -> closeTab(fi));
-            tabBar.addView(closeBtn);
+            tabLayout.addView(closeBtn, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT));
+
+            tabBar.addView(tabLayout, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT));
         }
+
+        Button newBtn = new Button(this);
+        newBtn.setText("+");
+        newBtn.setTextSize(16);
+        newBtn.setPadding(10, 0, 10, 0);
+        newBtn.setMinWidth(40);
+        newBtn.setMinHeight(36);
+        newBtn.setOnClickListener(v -> newTab("https://www.google.com"));
+        tabBar.addView(newBtn, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT));
     }
 
     private String t(int id) {
@@ -337,11 +376,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void applyTheme() {
-        if (isDark) {
-            findViewById(android.R.id.content).getRootView().setBackgroundColor(0xFF1e1e1e);
-        } else {
-            findViewById(android.R.id.content).getRootView().setBackgroundColor(0xFFFFFFFF);
-        }
+        int bgColor = isDark ? 0xFF1e1e1e : 0xFFFFFFFF;
+        int barColor = isDark ? 0xFF2d2d2d : 0xFFE0E0E0;
+        int bottomColor = isDark ? 0xFF333333 : 0xFF1976D2;
+
+        findViewById(android.R.id.content).getRootView().setBackgroundColor(bgColor);
+        findViewById(R.id.bottomBar).setBackgroundColor(bottomColor);
+
+        View tabScroll = (View) tabBar.getParent();
+        if (tabScroll != null) tabScroll.setBackgroundColor(barColor);
+
         for (TabInfo tab : tabs) {
             if (tab.webView != null && WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
                 androidx.webkit.WebSettingsCompat.setForceDark(tab.webView.getSettings(),
